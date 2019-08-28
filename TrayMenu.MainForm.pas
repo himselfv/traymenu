@@ -17,22 +17,37 @@ type
     PopupMenu: TPopupMenu;
     est11: TMenuItem;
     PopupIcons: TImageList;
+    DirectoryWatcherTimer: TTimer;
     procedure FormCreate(Sender: TObject);
     procedure TrayIconMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
+    procedure FormDestroy(Sender: TObject);
+    procedure PopupMenuPopup(Sender: TObject);
+    procedure DirectoryWatcherTimerTimer(Sender: TObject);
+
   protected
     FRootPath: string;
     procedure ParseCommandLine;
+
+  protected
+    FPopupMenuDirty: boolean;
     procedure ReloadMenu;
     procedure ReloadSubmenu(AParent: TMenuItem; const APath: string);
     procedure SortSubmenu(AParent: TMenuItem);
     function CompareMenuItems(A, B: TMenuItem): integer;
-    procedure MenuReloadClick(Sender: TObject);
 
   protected
     procedure TryReadInfo(const AFilename: string; out AInfo: TFileInfo);
     function GetShellLink(const AFilename: string): IShellLink;
     function CopyIcon(const AIcon: HICON): integer;
+
+  protected
+    FHDir: THandle;
+    FHDirBuf: array[0..1024-1] of byte;
+    FHDirOverlapped: TOverlapped;
+    procedure SetupDirectoryWatcher;
+    procedure CleanupDirectoryWatcher;
+    procedure DirectoryWatcherRearm;
 
   end;
 
@@ -51,7 +66,7 @@ var
   MainForm: TMainForm;
 
 implementation
-uses FilenameUtils, CommCtrl, ActiveX, ShellApi;
+uses SystemUtils, FilenameUtils, CommCtrl, ActiveX, ShellApi;
 
 {$R *.dfm}
 
@@ -63,6 +78,12 @@ begin
   FRootPath := GetSpecialFolderPath(CSIDL_APPDATA)+'\TrayMenu'; //by default
   ParseCommandLine;
   ReloadMenu;
+  SetupDirectoryWatcher;
+end;
+
+procedure TMainForm.FormDestroy(Sender: TObject);
+begin
+  CleanupDirectoryWatcher;
 end;
 
 type
@@ -93,25 +114,78 @@ begin
   end;
 end;
 
-procedure TMainForm.ReloadMenu;
-var item: TMenuItem;
+procedure TMainForm.SetupDirectoryWatcher;
+var res: integer;
 begin
-  PopupIcons.Clear;
-  ReloadSubmenu(PopupMenu.Items, FRootPath);
-
-  item := TMenuItem.Create(PopupMenu);
-  item.Caption := '-';
-  PopupMenu.Items.Add(item);
-
-  item := TMenuItem.Create(PopupMenu);
-  item.Caption := 'Reload';
-  item.OnClick := MenuReloadClick;
-  PopupMenu.Items.Add(item);
+  FHDir := CreateFile(PChar(Self.FRootPath), FILE_LIST_DIRECTORY, //or GENERIC_READ
+    FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE, nil,
+    OPEN_EXISTING, FILE_FLAG_OVERLAPPED or FILE_FLAG_BACKUP_SEMANTICS, 0);
+  if FHDir = INVALID_HANDLE_VALUE then FHDir := 0;
+  if FHDir = 0 then begin
+    res := GetLastError;
+    OutputDebugString('Cannot open target path with backup semantics, change notifications will be unavailable');
+    OutputDebugString(PChar('GetLastError='+IntToStr(res)));
+    exit;
+  end;
+  DirectoryWatcherRearm;
 end;
 
-procedure TMainForm.MenuReloadClick(Sender: TObject);
+procedure TMainForm.CleanupDirectoryWatcher;
 begin
-  ReloadMenu;
+  if FHDir <> 0 then begin
+    CancelIo(FHDir);
+    CloseHandle(FHDir);
+  end;
+end;
+
+//Do not call directly, done automatically
+procedure TMainForm.DirectoryWatcherRearm;
+var res: integer;
+  dwBytes: dword;
+begin
+  if Self.FHDir = 0 then exit; //can't anything
+  FillChar(FHDirOverlapped, SizeOf(FHDirOverlapped), 0);
+
+  //Would be better to assign a completion routine but those don't run without
+  //us doing SleepEx or WaitForMessagesEx somewhere
+
+  if not ReadDirectoryChangesW(Self.FHDir, @FHDirBuf[0], SizeOf(FHDirBuf),
+    true, //monitor children
+    FILE_NOTIFY_CHANGE_FILE_NAME or FILE_NOTIFY_CHANGE_DIR_NAME or
+    FILE_NOTIFY_CHANGE_ATTRIBUTES or FILE_NOTIFY_CHANGE_SIZE or
+    FILE_NOTIFY_CHANGE_LAST_WRITE or FILE_NOTIFY_CHANGE_CREATION,
+    @dwBytes,
+    @FHDirOverlapped, nil) then
+  begin
+    res := GetLastError;
+    OutputDebugString('Cannot rearm change notifications, further change notifications will be unavailable');
+    OutputDebugString(PChar('GetLastError='+IntToStr(res)));
+    //Can't do much on error, won't get any more notifications, sad
+  end;
+end;
+
+procedure TMainForm.DirectoryWatcherTimerTimer(Sender: TObject);
+var dwBytes: dword;
+begin
+  if Self.FHDir = 0 then exit;
+  if GetOverlappedResult(Self.FHDir, Self.FHDirOverlapped, dwBytes, false) then begin
+    FPopupMenuDirty := true;
+    DirectoryWatcherRearm;
+  end;
+end;
+
+
+procedure TMainForm.PopupMenuPopup(Sender: TObject);
+begin
+  if FPopupMenuDirty then
+    ReloadMenu;
+end;
+
+procedure TMainForm.ReloadMenu;
+begin
+  FPopupMenuDirty := false;
+  PopupIcons.Clear;
+  ReloadSubmenu(PopupMenu.Items, FRootPath);
 end;
 
 procedure TMainForm.ReloadSubmenu(AParent: TMenuItem; const APath: string);

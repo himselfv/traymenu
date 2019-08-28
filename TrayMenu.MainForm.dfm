@@ -3,7 +3,7 @@ object MainForm: TMainForm
   Top = 0
   Caption = 'MainForm'
   ClientHeight = 81
-  ClientWidth = 199
+  ClientWidth = 249
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -12,6 +12,7 @@ object MainForm: TMainForm
   Font.Style = []
   OldCreateOrder = False
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 13
   object TrayIcon: TTrayIcon
@@ -23,6 +24,7 @@ object MainForm: TMainForm
   end
   object PopupMenu: TPopupMenu
     Images = PopupIcons
+    OnPopup = PopupMenuPopup
     Left = 72
     Top = 16
     object est11: TMenuItem
@@ -33,6 +35,12 @@ object MainForm: TMainForm
     ColorDepth = cd32Bit
     DrawingStyle = dsTransparent
     Left = 136
+    Top = 16
+  end
+  object DirectoryWatcherTimer: TTimer
+    Interval = 250
+    OnTimer = DirectoryWatcherTimerTimer
+    Left = 200
     Top = 16
   end
 end
