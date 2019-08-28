@@ -4,6 +4,7 @@ __history
 *.dcu
 *.rsm
 *.local
+*.identcache
 
 Win64
 Win32
