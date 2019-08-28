@@ -18,17 +18,28 @@ type
     est11: TMenuItem;
     PopupIcons: TImageList;
     procedure FormCreate(Sender: TObject);
+    procedure TrayIconMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
   protected
     FRootPath: string;
     procedure ParseCommandLine;
     procedure ReloadMenu;
     procedure ReloadSubmenu(AParent: TMenuItem; const APath: string);
+    procedure MenuItemClick(Sender: TControl);
 
   protected
     procedure TryReadInfo(const AFilename: string; out AInfo: TFileInfo);
     function GetShellLink(const AFilename: string): IShellLink;
     function CopyIcon(const AIcon: HICON): integer;
 
+  end;
+
+  TLinkMenuItem = class(TMenuItem)
+  protected
+    FFilename: string;
+  public
+    constructor Create(AOwner: TComponent; const AFilename: string); reintroduce;
+    procedure Click; override;
   end;
 
 var
@@ -98,16 +109,19 @@ begin
       continue;
     end;
 
-    item := TMenuItem.Create(Self.PopupMenu);
-    AParent.Add(item);
-
     if sr.Attr and faDirectory <> 0 then begin
+      item := TMenuItem.Create(Self.PopupMenu);
+      item.Caption := sr.Name;
+      AParent.Add(item);
       ReloadSubmenu(item, APath+'\'+sr.Name);
     end else begin
+      item := TLinkMenuItem.Create(Self.PopupMenu, APath+'\'+sr.Name);
       item.Caption := ChangeFileExt(sr.Name, '');
       TryReadInfo(APath+'\'+sr.Name, info);
       item.Hint := info.Description;
       item.ImageIndex := info.IconIndex;
+      //item.OnClick := Self.MenuItemClick;
+      AParent.Add(item);
     end;
     res := SysUtils.FindNext(sr);
   end;
@@ -163,6 +177,35 @@ begin
   icon := TIcon.Create;
   icon.Handle := AIcon;
   Result := PopupIcons.AddIcon(icon);
+end;
+
+procedure TMainForm.TrayIconMouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  if Button = mbLeft then begin
+    SetForegroundWindow(Application.Handle);
+    Application.ProcessMessages;
+    PopupMenu.AutoPopup := False;
+    PopupMenu.PopupComponent := TrayIcon;
+    PopupMenu.Popup(X, Y);
+  end;
+end;
+
+constructor TLinkMenuItem.Create(AOwner: TComponent; const AFilename: string);
+begin
+  inherited Create(AOwner);
+  Self.FFilename := AFilename;
+end;
+
+procedure TLinkMenuItem.Click;
+begin
+  inherited;
+  ShellExecute(0, PChar('open'), PChar(Self.FFilename), nil, nil, SW_SHOW);
+end;
+
+procedure TMainForm.MenuItemClick(Sender: TControl);
+begin
+//
 end;
 
 

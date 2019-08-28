@@ -17,6 +17,7 @@ object MainForm: TMainForm
   object TrayIcon: TTrayIcon
     PopupMenu = PopupMenu
     Visible = True
+    OnMouseUp = TrayIconMouseUp
     Left = 16
     Top = 16
   end
