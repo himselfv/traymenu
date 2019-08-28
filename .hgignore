@@ -1,0 +1,9 @@
+syntax:glob
+
+__history
+*.dcu
+*.rsm
+*.local
+
+Win64
+Win32
