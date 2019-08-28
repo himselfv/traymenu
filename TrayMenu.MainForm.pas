@@ -51,7 +51,7 @@ var
   MainForm: TMainForm;
 
 implementation
-uses FilenameUtils, ActiveX, ShellApi;
+uses FilenameUtils, CommCtrl, ActiveX, ShellApi;
 
 {$R *.dfm}
 
@@ -85,7 +85,7 @@ begin
       if i > ParamCount then
         raise EBadUsage.Create('/path requires specifying path');
       Self.FRootPath := CanonicalizePath(ParamStr(i), GetCurrentDir);
-    end else
+    end;
 
     raise EBadUsage.Create('Unknown parameter: "'+s+'"');
 
@@ -217,13 +217,18 @@ begin
   end;
 
   //For files and folders we can query their explorer icons + type descriptions
-  res := ShellApi.SHGetFileInfo(PChar(AFilename), 0, shInfo, SizeOf(shInfo), SHGFI_TYPENAME or SHGFI_ICON or SHGFI_SMALLICON);
+  res := ShellApi.SHGetFileInfo(PChar(AFilename), 0, shInfo, SizeOf(shInfo), SHGFI_TYPENAME or SHGFI_SMALLICON or SHGFI_SYSICONINDEX);
   if res <> 0 then begin
     if AInfo.Description='' then
       AInfo.Description := shInfo.szTypeName;
-    if shInfo.hIcon <> 0 then begin
-      if AInfo.IconIndex < 0 then
-        AInfo.IconIndex := Self.CopyIcon(shInfo.hIcon);
+    //Icon from hIcon has [link] overlay, we prefer to get the system index and query directly
+    if shInfo.hIcon <> 0 then
+      DestroyIcon(shInfo.hIcon);
+    if (AInfo.IconIndex < 0) and (shInfo.iIcon <> 0) then begin
+      shInfo.hIcon := ImageList_GetIcon(res, shInfo.iIcon, ILD_NORMAL);
+      if shInfo.hIcon = 0 then
+        shInfo.hIcon := GetLastError;
+      AInfo.IconIndex := Self.CopyIcon(shInfo.hIcon);
       DestroyIcon(shInfo.hIcon);
     end;
   end;
