@@ -38,7 +38,7 @@ object MainForm: TMainForm
     Top = 16
   end
   object DirectoryWatcherTimer: TTimer
-    Interval = 250
+    Interval = 500
     OnTimer = DirectoryWatcherTimerTimer
     Left = 200
     Top = 16
