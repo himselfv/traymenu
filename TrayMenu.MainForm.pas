@@ -25,13 +25,18 @@ type
     procedure ParseCommandLine;
     procedure ReloadMenu;
     procedure ReloadSubmenu(AParent: TMenuItem; const APath: string);
-    procedure MenuItemClick(Sender: TControl);
+    procedure SortSubmenu(AParent: TMenuItem);
+    function CompareMenuItems(A, B: TMenuItem): integer;
+    procedure MenuReloadClick(Sender: TObject);
 
   protected
     procedure TryReadInfo(const AFilename: string; out AInfo: TFileInfo);
     function GetShellLink(const AFilename: string): IShellLink;
     function CopyIcon(const AIcon: HICON): integer;
 
+  end;
+
+  TDirMenuItem = class(TMenuItem)
   end;
 
   TLinkMenuItem = class(TMenuItem)
@@ -88,9 +93,24 @@ begin
 end;
 
 procedure TMainForm.ReloadMenu;
+var item: TMenuItem;
 begin
   PopupIcons.Clear;
   ReloadSubmenu(PopupMenu.Items, FRootPath);
+
+  item := TMenuItem.Create(PopupMenu);
+  item.Caption := '-';
+  PopupMenu.Items.Add(item);
+
+  item := TMenuItem.Create(PopupMenu);
+  item.Caption := 'Reload';
+  item.OnClick := MenuReloadClick;
+  PopupMenu.Items.Add(item);
+end;
+
+procedure TMainForm.MenuReloadClick(Sender: TObject);
+begin
+  ReloadMenu;
 end;
 
 procedure TMainForm.ReloadSubmenu(AParent: TMenuItem; const APath: string);
@@ -110,8 +130,10 @@ begin
     end;
 
     if sr.Attr and faDirectory <> 0 then begin
-      item := TMenuItem.Create(Self.PopupMenu);
+      item := TDirMenuItem.Create(Self.PopupMenu);
       item.Caption := sr.Name;
+      TryReadInfo(APath+'\'+sr.Name, info);
+      item.ImageIndex := info.IconIndex;
       AParent.Add(item);
       ReloadSubmenu(item, APath+'\'+sr.Name);
     end else begin
@@ -120,12 +142,55 @@ begin
       TryReadInfo(APath+'\'+sr.Name, info);
       item.Hint := info.Description;
       item.ImageIndex := info.IconIndex;
-      //item.OnClick := Self.MenuItemClick;
       AParent.Add(item);
     end;
     res := SysUtils.FindNext(sr);
   end;
   SysUtils.FindClose(sr);
+
+  SortSubmenu(AParent);
+end;
+
+procedure TMainForm.SortSubmenu(AParent: TMenuItem);
+var i, j: integer;
+  item: TMenuItem;
+begin
+  i := 0;
+  while i < AParent.Count-1 do begin
+    j := i-1;
+    while j >= 0 do begin
+      if CompareMenuItems(AParent.Items[j], AParent.Items[i]) <= 0 then begin
+        if j<i-1 then begin
+          item := AParent.Items[i];
+          AParent.Remove(item);
+          AParent.Insert(j+1, item);
+        end;
+        break;
+      end;
+      Dec(j);
+    end;
+    if j < 0 then begin
+      item := AParent.Items[i];
+      AParent.Remove(item);
+      AParent.Insert(0, item);
+    end;
+    Inc(i);
+  end;
+end;
+
+function TMainForm.CompareMenuItems(A, B: TMenuItem): integer;
+var AD, BD: boolean;
+begin
+  AD := (A is TDirMenuItem);
+  BD := (B is TDirMenuItem);
+  if AD <> BD then begin
+    if AD then
+      Result := -1
+    else
+      Result := +1;
+    exit;
+  end;
+  Result := CompareText(A.Caption, B.Caption);
 end;
 
 procedure TMainForm.TryReadInfo(const AFilename: string; out AInfo: TFileInfo);
@@ -136,6 +201,7 @@ begin
   AInfo.Description := '';
   AInfo.IconIndex := -1;
 
+  //If this is a link, we can query its link description
   psl := Self.GetShellLink(AFilename);
   if psl <> nil then begin
     SetLength(AInfo.Description, MAX_PATH+1);
@@ -145,7 +211,8 @@ begin
       AInfo.Description := '';
   end;
 
-  res := SHGetFileInfo(PChar(AFilename), 0, shInfo, SizeOf(shInfo), SHGFI_TYPENAME or SHGFI_ICON or SHGFI_SMALLICON);
+  //For files and folders we can query their explorer icons + type descriptions
+  res := ShellApi.SHGetFileInfo(PChar(AFilename), 0, shInfo, SizeOf(shInfo), SHGFI_TYPENAME or SHGFI_ICON or SHGFI_SMALLICON);
   if res <> 0 then begin
     if AInfo.Description='' then
       AInfo.Description := shInfo.szTypeName;
@@ -154,8 +221,7 @@ begin
         AInfo.IconIndex := Self.CopyIcon(shInfo.hIcon);
       DestroyIcon(shInfo.hIcon);
     end;
-  end else
-    AInfo.IconIndex := res;
+  end;
 end;
 
 function TMainForm.GetShellLink(const AFilename: string): IShellLink;
@@ -201,11 +267,6 @@ procedure TLinkMenuItem.Click;
 begin
   inherited;
   ShellExecute(0, PChar('open'), PChar(Self.FFilename), nil, nil, SW_SHOW);
-end;
-
-procedure TMainForm.MenuItemClick(Sender: TControl);
-begin
-//
 end;
 
 
