@@ -60,6 +60,7 @@ begin
   inherited;
   CoInitialize(nil);
   OleInitialize(nil);
+  FRootPath := GetSpecialFolderPath(CSIDL_APPDATA)+'\TrayMenu'; //by default
   ParseCommandLine;
   ReloadMenu;
 end;
@@ -124,7 +125,11 @@ begin
 
   res := SysUtils.FindFirst(APath+'\*.*', faAnyFile, sr);
   while res = 0 do begin
-    if (sr.Name='.') or (sr.Name='..') then begin
+    if (sr.Name='') or (sr.Name='.') or (sr.Name='..') then begin
+      res := SysUtils.FindNext(sr);
+      continue;
+    end;
+    if (sr.Name[1]='.') or (sr.Attr and faHidden <> 0) then begin
       res := SysUtils.FindNext(sr);
       continue;
     end;
