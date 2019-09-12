@@ -1,5 +1,7 @@
 Displays a tray icon with a popup menu populated with items from a given folder and subfolders.
 
+![Tray notification](docs/screen1.png)
+
 By default:
   %APPDATA%\TrayMenu
 
